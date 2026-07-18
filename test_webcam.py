@@ -14,6 +14,8 @@ cap = cv2.VideoCapture(0)
 times = []
 data_buffer = []
 BUFFER_SIZE = 150  # Number of frames to collect before calculating the FFT
+smoothed_box = None
+t0 = time.time()
 
 t0 = time.time()
 
@@ -30,15 +32,23 @@ while True:
     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5)
 
     for (x, y, w, h) in faces:
-        # Draw a blue bounding box around the detected face
-        cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
+        # --- NEW SMOOTHING LOGIC ---
+        if smoothed_box is None:
+            smoothed_box = [x, y, w, h]
+        else:
+            # 20% new position, 80% old position to eliminate micro-jitters
+            smoothed_box = [int(0.2 * curr + 0.8 * prev) for curr, prev in zip([x, y, w, h], smoothed_box)]
+            
+        sx, sy, sw, sh = smoothed_box
         
-        # Define the Region of Interest (ROI) for the forehead
-        # We target the upper middle section of the bounding box
-        fh_x = x + int(w * 0.25)
-        fh_y = y + int(h * 0.1)
-        fh_w = int(w * 0.5)
-        fh_h = int(h * 0.15)
+        # Draw a blue bounding box around the smoothed face
+        cv2.rectangle(frame, (sx, sy), (sx+sw, sy+sh), (255, 0, 0), 2)
+        
+        # Define the Region of Interest (ROI) for the forehead using smoothed coordinates
+        fh_x = sx + int(sw * 0.25)
+        fh_y = sy + int(sh * 0.1)
+        fh_w = int(sw * 0.5)
+        fh_h = int(sh * 0.15)
         
         # Draw a green bounding box around the forehead ROI
         cv2.rectangle(frame, (fh_x, fh_y), (fh_x+fh_w, fh_y+fh_h), (0, 255, 0), 2)
