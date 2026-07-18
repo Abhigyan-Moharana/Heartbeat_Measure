@@ -7,15 +7,15 @@ from scipy.signal import butter, filtfilt, detrend
 # Ensure this XML file is in the same directory as this script
 face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_alt.xml')
 
-# Initialize the laptop's default webcam (Index 0)
+# For laptop webcam, use 0 or 1 depending on the camera index
 cap = cv2.VideoCapture('http://192.168.137.111:8080/video')
 
-# Data buffers for time and signal values
+# Data buffers and smoothing variables
 times = []
 data_buffer = []
 BUFFER_SIZE = 150  # Number of frames to collect before calculating the FFT
 smoothed_box = None
-t0 = time.time()
+bpm_history = []   # Tracks past readings for hyper-accuracy
 
 t0 = time.time()
 
@@ -74,11 +74,12 @@ while True:
             signal = np.array(data_buffer)
             fps = len(times) / (times[-1] - times[0])
             
-            # 1. Detrend to remove slow head movement drifts
-            signal = detrend(signal)
+            # DC Normalization: This step removes the average value from the signal, effectively centering it around zero. It helps to eliminate any constant lighting changes that could affect the measurement.
+            # This strips away absolute lighting intensity changes
+            signal = (signal / np.mean(signal)) - 1.0
             
-            # 2. Normalize the signal to zero mean and unit variance
-            signal = (signal - np.mean(signal)) / np.std(signal)
+            # 2. Detrend to remove slow drifts from posture shifts
+            signal = detrend(signal)
             
             # 3. Butterworth Bandpass Filter (isolates 48 to 180 BPM)
             nyquist = 0.5 * fps
