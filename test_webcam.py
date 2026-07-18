@@ -7,7 +7,7 @@ from scipy.signal import butter, filtfilt, detrend
 # Ensure this XML file is in the same directory as this script
 face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_alt.xml')
 
-# For laptop webcam, use 0 or 1 depending on the camera index
+# Connect to the IP Webcam
 cap = cv2.VideoCapture('http://192.168.137.111:8080/video')
 
 # Data buffers and smoothing variables
@@ -23,16 +23,22 @@ print("Starting camera... Press 'q' to quit.")
 
 while True:
     ret, frame = cap.read()
-    if not ret:
-        print("Failed to grab frame")
-        break
+    
+    # SHIELD 1: Network Lag Protection
+    # If the Wi-Fi drops a packet, skip it instead of crashing.
+    if not ret or frame is None:
+        continue
+        
+    # Check if the frame is actually valid before processing.
+    if frame.shape[0] == 0 or frame.shape[1] == 0:
+        continue
         
     # Convert frame to grayscale for the face detection algorithm
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5)
 
     for (x, y, w, h) in faces:
-        # --- NEW SMOOTHING LOGIC ---
+        # --- SMOOTHING LOGIC FOR THE BOUNDING BOX ---
         if smoothed_box is None:
             smoothed_box = [x, y, w, h]
         else:
@@ -44,11 +50,16 @@ while True:
         # Draw a blue bounding box around the smoothed face
         cv2.rectangle(frame, (sx, sy), (sx+sw, sy+sh), (255, 0, 0), 2)
         
-        # Define the Region of Interest (ROI) for the forehead using smoothed coordinates
-        fh_x = sx + int(sw * 0.25)
-        fh_y = sy + int(sh * 0.1)
-        fh_w = int(sw * 0.5)
-        fh_h = int(sh * 0.15)
+        # SHIELD 2: Boundary Clamping
+        # Prevents the script from crashing if your forehead goes off the edge of the screen
+        fh_x = max(0, sx + int(sw * 0.25))
+        fh_y = max(0, sy + int(sh * 0.1))
+        fh_w = min(frame.shape[1] - fh_x, int(sw * 0.5))
+        fh_h = min(frame.shape[0] - fh_y, int(sh * 0.15))
+        
+        # If the box collapses entirely, skip this frame
+        if fh_w <= 0 or fh_h <= 0:
+            continue
         
         # Draw a green bounding box around the forehead ROI
         cv2.rectangle(frame, (fh_x, fh_y), (fh_x+fh_w, fh_y+fh_h), (0, 255, 0), 2)
@@ -64,8 +75,7 @@ while True:
         green_mean = np.mean(green_channel)
         red_mean = np.mean(red_channel)
         
-        # Subtract Red from Green to cancel out environmental lighting changes
-        # We multiply Red by a scaling factor to balance their baseline intensities
+        # Subtract Red from Green to cancel out environmental lighting
         balanced_signal = green_mean - (0.5 * red_mean)
         
         # Record the time and the enhanced signal value
@@ -77,51 +87,69 @@ while True:
             data_buffer.pop(0)
             times.pop(0)
             
-            # --- Signal Processing ---
-            signal = np.array(data_buffer)
-            fps = len(times) / (times[-1] - times[0])
-            
-            # DC Normalization: This step removes the average value from the signal, effectively centering it around zero. It helps to eliminate any constant lighting changes that could affect the measurement.
-            # This strips away absolute lighting intensity changes
-            signal = (signal / np.mean(signal)) - 1.0
-            
-            # 2. Detrend to remove slow drifts from posture shifts
-            signal = detrend(signal)
-            
-            # 3. Butterworth Bandpass Filter (isolates 48 to 180 BPM)
-            nyquist = 0.5 * fps
-            low = 0.8 / nyquist
-            high = 3.0 / nyquist
-            
-            if 0 < low < high < 1:
-                b, a = butter(2, [low, high], btype='band')
-                signal = filtfilt(b, a, signal)
-            
-            # 4. Apply a Hamming Window to reduce spectral leakage
-            window = np.hamming(len(signal))
-            windowed_signal = signal * window
-            
-            # 5. Compute the Fast Fourier Transform (FFT) with Zero-Padding
-            padded_length = 1024  
-            
-            fft_data = np.abs(np.fft.rfft(windowed_signal, n=padded_length))
-            fft_freqs = np.fft.rfftfreq(padded_length, d=1.0/fps)
-            
-            # 3. Filter for standard human heart rates (0.8 Hz to 3.0 Hz -> 48 BPM to 180 BPM)
-            valid_indices = np.where((fft_freqs > 0.8) & (fft_freqs < 3.0))
-            
-            if len(valid_indices[0]) > 0:
-                valid_fft = fft_data[valid_indices]
-                valid_freqs = fft_freqs[valid_indices]
+            # SHIELD 3: Math "God Mode"
+            # If the filters hit a math anomaly, it skips the frame instead of crashing the app
+            try:
+                # --- SIGNAL PROCESSING (RED-GREEN + DC NORMALIZATION) ---
+                signal = np.array(data_buffer)
                 
-                # 4. Extract the dominant frequency
-                dominant_freq = valid_freqs[np.argmax(valid_fft)]
+                # Prevent ZeroDivisionError if network drops multiple frames in the exact same millisecond
+                time_diff = times[-1] - times[0]
+                if time_diff == 0:
+                    continue
+                    
+                fps = len(times) / time_diff
                 
-                # 5. Convert frequency (Hz) to Beats Per Minute (BPM)
-                bpm = dominant_freq * 60
+                # 1. DC Normalization (Removes absolute lighting intensity)
+                signal = (signal / np.mean(signal)) - 1.0
                 
-                # Display the BPM on the video feed
-                cv2.putText(frame, f"BPM: {int(bpm)}", (x, y-15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                # 2. Detrend to remove slow drifts from posture shifts
+                signal = detrend(signal)
+                
+                # 3. Butterworth Bandpass Filter (isolates 48 to 180 BPM)
+                nyquist = 0.5 * fps
+                low = 0.8 / nyquist
+                high = 3.0 / nyquist
+                
+                if 0 < low < high < 1:
+                    b, a = butter(2, [low, high], btype='band')
+                    signal = filtfilt(b, a, signal)
+                
+                # 4. Apply a Hamming Window to reduce spectral leakage
+                window = np.hamming(len(signal))
+                windowed_signal = signal * window
+                
+                # 5. Compute the Fast Fourier Transform (FFT) with Zero-Padding
+                padded_length = 1024  
+                
+                fft_data = np.abs(np.fft.rfft(windowed_signal, n=padded_length))
+                fft_freqs = np.fft.rfftfreq(padded_length, d=1.0/fps)
+                
+                # 6. Filter for standard human heart rates (0.8 Hz to 3.0 Hz -> 48 BPM to 180 BPM)
+                valid_indices = np.where((fft_freqs > 0.8) & (fft_freqs < 3.0))
+                
+                if len(valid_indices[0]) > 0:
+                    valid_fft = fft_data[valid_indices]
+                    valid_freqs = fft_freqs[valid_indices]
+                    
+                    # 7. Extract the dominant frequency
+                    dominant_freq = valid_freqs[np.argmax(valid_fft)]
+                    raw_bpm = dominant_freq * 60
+                    
+                    # --- TEMPORAL SMOOTHING FOR THE DASHBOARD ---
+                    # This stops the numbers from violently flickering
+                    bpm_history.append(raw_bpm)
+                    if len(bpm_history) > 30:  # Average the last 30 readings
+                        bpm_history.pop(0)
+                    
+                    final_bpm = np.mean(bpm_history)
+                    
+                    # Display the smoothed BPM on the video feed
+                    cv2.putText(frame, f"BPM: {int(final_bpm)}", (x, y-15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+            
+            except Exception as e:
+                # Silently pass over any math errors
+                pass
                 
     # Show the live feed
     cv2.imshow('rPPG Webcam Test', frame)
