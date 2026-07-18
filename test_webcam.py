@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import time
+from scipy.signal import butter, filtfilt, detrend
 
 # Load the pre-trained Haar Cascade model for face detection
 # Ensure this XML file is in the same directory as this script
@@ -60,15 +61,29 @@ while True:
             times.pop(0)
             
             # --- Signal Processing ---
-            # 1. Normalize the signal to zero mean and unit variance
             signal = np.array(data_buffer)
+            fps = len(times) / (times[-1] - times[0])
+            
+            # 1. Detrend to remove slow head movement drifts
+            signal = detrend(signal)
+            
+            # 2. Normalize the signal to zero mean and unit variance
             signal = (signal - np.mean(signal)) / np.std(signal)
             
-            # 2. Compute the Fast Fourier Transform (FFT)
+            # 3. Butterworth Bandpass Filter (isolates 48 to 180 BPM)
+            nyquist = 0.5 * fps
+            low = 0.8 / nyquist
+            high = 3.0 / nyquist
+            
+            if 0 < low < high < 1:
+                b, a = butter(2, [low, high], btype='band')
+                signal = filtfilt(b, a, signal)
+            
+            # 4. Apply a Hamming Window to reduce spectral leakage
             window = np.hamming(len(signal))
             windowed_signal = signal * window
-
-            fps = len(times) / (times[-1] - times[0])
+            
+            # 5. Compute the Fast Fourier Transform (FFT) with Zero-Padding
             padded_length = 1024  
             
             fft_data = np.abs(np.fft.rfft(windowed_signal, n=padded_length))
