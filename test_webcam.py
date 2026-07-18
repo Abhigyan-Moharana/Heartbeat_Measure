@@ -8,7 +8,7 @@ from scipy.signal import butter, filtfilt, detrend
 face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_alt.xml')
 
 # Initialize the laptop's default webcam (Index 0)
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture('http://192.168.137.111:8080/video')
 
 # Data buffers for time and signal values
 times = []
