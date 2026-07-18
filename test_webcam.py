@@ -56,14 +56,21 @@ while True:
         # Extract the forehead region from the frame
         roi = frame[fh_y:fh_y+fh_h, fh_x:fh_x+fh_w]
         
-        # Isolate the Green Channel (OpenCV loads images in BGR format, so index 1 is Green)
-        # Blood absorbs green light, making it the strongest channel for rPPG
+        # Extract both Green (index 1) and Red (index 2) channels
         green_channel = roi[:, :, 1]
-        green_mean = np.mean(green_channel)
+        red_channel = roi[:, :, 2]
         
-        # Record the time and the mean color value
+        # Calculate the means
+        green_mean = np.mean(green_channel)
+        red_mean = np.mean(red_channel)
+        
+        # Subtract Red from Green to cancel out environmental lighting changes
+        # We multiply Red by a scaling factor to balance their baseline intensities
+        balanced_signal = green_mean - (0.5 * red_mean)
+        
+        # Record the time and the enhanced signal value
         times.append(time.time() - t0)
-        data_buffer.append(green_mean)
+        data_buffer.append(balanced_signal)
         
         # Maintain a rolling window of data
         if len(data_buffer) > BUFFER_SIZE:
