@@ -65,9 +65,14 @@ while True:
             signal = (signal - np.mean(signal)) / np.std(signal)
             
             # 2. Compute the Fast Fourier Transform (FFT)
-            fft_data = np.abs(np.fft.rfft(signal))
+            window = np.hamming(len(signal))
+            windowed_signal = signal * window
+
             fps = len(times) / (times[-1] - times[0])
-            fft_freqs = np.fft.rfftfreq(len(signal), d=1.0/fps)
+            padded_length = 1024  
+            
+            fft_data = np.abs(np.fft.rfft(windowed_signal, n=padded_length))
+            fft_freqs = np.fft.rfftfreq(padded_length, d=1.0/fps)
             
             # 3. Filter for standard human heart rates (0.8 Hz to 3.0 Hz -> 48 BPM to 180 BPM)
             valid_indices = np.where((fft_freqs > 0.8) & (fft_freqs < 3.0))
