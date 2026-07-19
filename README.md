@@ -115,21 +115,45 @@ ThinkPad Laptop	Hosts and renders the real-time dashboard
 ```
 ---
 🚀 Getting It Running
-Step 1 — Train the model
+## 🚀 Quick Setup Instructions
+
+To run this project on your local machine, follow these steps:
+
+### 1. Clone the Repository
 ```bash
-python train.py
-```
-Step 2 — Convert to ONNX
-```bash
-python convert_to_onnx.py
-```
-Step 3 — Run inference
-```bash
-python inference.py
-```
-Step 4 — Run the optimized model on NPU
-```bash
-python run_on_npu.py
+git clone [https://github.com/Abhigyan-Moharana/Heartbeat_Measure.git](https://github.com/Abhigyan-Moharana/Heartbeat_Measure.git)
+cd Heartbeat_Measure
+2. Setup Virtual Environment
+Bash
+# Create the environment
+python -m venv .venv
+
+# Activate the environment
+# Windows:
+.venv\Scripts\activate
+# Mac/Linux:
+source .venv/bin/activate
+3. Install Dependencies
+Bash
+pip install -r requirements.txt
+4. Configuration (Required)
+Since config.py is excluded for security, you must create it manually:
+
+Create a file named config.py in the root directory.
+
+Add your Google Gemini API Key inside it:
+
+Python
+API_KEY = "YOUR_GEMINI_API_KEY_HERE"
+5. Camera Setup
+Open app.py and locate the cv2.VideoCapture line.
+
+Update the URL with your camera's IP stream (e.g., http://192.168.x.x:8080/video).
+
+6. Run the Application
+Bash
+python app.py
+Open your browser and navigate to: http://127.0.0.1:5000
 ```
 ---
 🔮 What's Next
