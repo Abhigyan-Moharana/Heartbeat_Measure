@@ -10,7 +10,11 @@ import os
 from datetime import datetime
 import logging
 import random
+import google.generativeai as genai
+import config
 
+
+genai.configure(api_key=config.API_KEY)
 # --- FLASK SETUP ---
 app = Flask(__name__)
 CORS(app) 
@@ -22,6 +26,7 @@ log.setLevel(logging.ERROR)
 # --- GLOBAL VARIABLES ---
 global_bpm = 0
 global_diagnosis = "Connecting to camera feed and establishing baseline metrics..."
+global_avg_bpm = 0.0
 
 # --- INITIALIZE THE DATABASE (CSV) ---
 csv_filename = "session_data.csv"
@@ -33,42 +38,44 @@ with open(csv_filename, mode='w', newline='') as file:
 # --- THREAD 1: BACKGROUND DATA LOGGER & AI TRIGGER ---
 # --- THREAD 1: BACKGROUND DATA LOGGER & AI TRIGGER ---
 def autonomous_engine():
-    global global_bpm, global_diagnosis
+    global global_bpm, global_diagnosis, global_avg_bpm # Added global_avg_bpm
     
-    # Wait for camera calibration
-    global_diagnosis = "Calibrating... Please remain still."
+    # Wait for camera to start giving readings
     while int(global_bpm) == 0:
+        global_diagnosis = "Calibrating sensors..."
         time.sleep(0.5)
         
-    collected_data = [] # This will hold your 60 readings
+    collected_data = [] 
     
-    # 1. COLLECTION PHASE (60 Readings)
+    # COLLECTION PHASE
     while len(collected_data) < 60:
-        time.sleep(0.5) # Recording at 2Hz
+        time.sleep(0.5) 
         current_bpm = int(global_bpm)
         if current_bpm > 0:
             collected_data.append(current_bpm)
-            global_diagnosis = f"Collecting session data... ({len(collected_data)}/60)"
+            # Progress tracking
+            readings_left = 60 - len(collected_data)
+            global_diagnosis = f"Analyzing: {readings_left} readings remaining..."
             
             # Log to CSV
             with open(csv_filename, mode='a', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow([datetime.now().strftime("%H:%M:%S"), current_bpm])
 
-    # 2. ANALYSIS PHASE (Median & AI Preparation)
-    final_median = np.median(collected_data)
-    
-    # This is where you will inject your model and LLM later
-    global_diagnosis = f"Final Reading: {int(final_median)} BPM. Processing AI Diagnosis..."
-    
-    # --- FUTURE AI HOOKS ---
-    # raw_dataset_for_model = collected_data 
-    # model_prediction = my_embedded_model.predict(raw_dataset_for_model)
-    # llm_feedback = call_llm(model_prediction)
-    
-    time.sleep(2) # Brief pause for effect
-    global_diagnosis = f"FINAL REPORT: {int(final_median)} BPM average. Rhythm is consistent. [AI Diagnosis: Normal sinus rhythm detected, data analyzed via neural-classifier]."
+    # Once 60 are collected, set average
+    global_avg_bpm = round(float(np.median(collected_data)), 2)
 
+    # ANALYSIS PHASE
+    global_diagnosis = "Generating final AI clinical report..."
+    try:
+        # Corrected model name
+        model = genai.GenerativeModel('gemini-3.5-flash')
+        prompt = f"Analyze these 60 heart rate readings: {collected_data}. Median: {global_avg_bpm}. Provide a 4-5 word summary."
+        response = model.generate_content(prompt)
+        global_diagnosis = response.text.strip()
+    except Exception as e:
+        global_diagnosis = "AI report generation failed."
+        print(f"DEBUG ERROR: {e}")
 
 # --- THREAD 2: FLASK WEB SERVER ROUTES ---
 @app.route('/')
@@ -79,7 +86,8 @@ def home():
 def get_data():
     return jsonify({
         "bpm": int(global_bpm),
-        "diagnosis": global_diagnosis
+        "diagnosis": global_diagnosis,
+        "avg_bpm": global_avg_bpm
     })
 
 def run_flask():

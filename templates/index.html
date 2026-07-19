@@ -3,141 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>rPPG Biometric Dashboard</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #0f172a;
-            color: #f8fafc;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-        }
-        .dashboard-container {
-            background-color: #1e293b;
-            padding: 40px;
-            border-radius: 15px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-            text-align: center;
-            width: 450px;
-        }
-        h1 { margin-top: 0; color: #94a3b8; }
-        
-        .bpm-display {
-            font-size: 80px;
-            font-weight: bold;
-            margin: 20px 0;
-            transition: color 0.3s ease;
-        }
-        
-        .status-badge {
-            display: inline-block;
-            padding: 8px 20px;
-            border-radius: 20px;
-            font-size: 18px;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 30px;
-            transition: all 0.3s ease;
-        }
-
-        /* Status Colors */
-        .status-good { background-color: #22c55e; color: #000; }
-        .status-bad { background-color: #f59e0b; color: #000; }
-        .status-critical { background-color: #ef4444; color: #fff; animation: pulse 1s infinite; }
-
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
-        }
-
-        .diagnosis-console {
-            background-color: #0f172a;
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #334155;
-            text-align: left;
-            font-size: 14px;
-            color: #cbd5e1;
-            min-height: 80px;
-            margin-top: 20px;
-            line-height: 1.5;
-        }
-    </style>
+    <title>Biometric AI Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
+<body class="bg-gray-900 text-white font-sans p-6">
 
-    <div class="dashboard-container">
-        <h1>Live Bio-Metrics</h1>
-        <div id="statusBadge" class="status-badge status-good">Calibrating...</div>
-        <div id="bpmValue" class="bpm-display">--</div>
-        
-        <div class="diagnosis-console">
-            <strong>System Status / AI Report:</strong> <br>
-            <span id="diagnosisText" style="color: #64748b;">Connecting to camera feed and establishing baseline physiological metrics...</span>
+    <div class="max-w-4xl mx-auto">
+        <header class="mb-8 border-b border-gray-700 pb-4">
+            <h1 class="text-3xl font-bold text-blue-400">Qualcomm rPPG Pulse Engine</h1>
+            <p class="text-gray-400">AI-Powered Cardiovascular Diagnostic Terminal</p>
+        </header>
+
+        <!-- Top Grid: 3 Divisions -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl text-center">
+                <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Live Heart Rate</h2>
+                <div id="bpmDisplay" class="text-4xl font-mono text-blue-300 mt-4">-- BPM</div>
+            </div>
+
+            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl text-center">
+                <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Condition</h2>
+                <div id="statusAlert" class="text-4xl font-bold mt-4 text-gray-400">--</div>
+            </div>
+
+            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl text-center">
+                <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">AI Clinical Insights</h2>
+                <p id="diagnosisText" class="text-sm mt-4 leading-relaxed text-gray-300">Initializing sensors...</p>
+            </div>
+        </div>
+
+        <!-- 4th Division: Full Width -->
+        <div class="mt-6 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl text-center">
+            <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Calculated Session Average</h2>
+            <div id="avgBpmDisplay" class="text-3xl font-mono mt-2 text-blue-400">-- BPM</div>
         </div>
     </div>
 
     <script>
-        async function fetchBPM() {
+        async function updateDashboard() {
             try {
                 const response = await fetch('/api/data');
                 const data = await response.json();
+                const bpm = data.bpm;
+
+                // 1. Live Heart Rate
+                document.getElementById('bpmDisplay').innerText = bpm > 0 ? `${bpm} BPM` : "-- BPM";
                 
-                // Update the BPM Number
-                const bpmElement = document.getElementById('bpmValue');
-                bpmElement.innerText = data.bpm > 0 ? data.bpm : '--';
-                
-                // Automatically inject the AI Diagnosis text from Python
+                // 2. AI Insight (Countdown or Report)
                 document.getElementById('diagnosisText').innerText = data.diagnosis;
-                
-                // Update the Badge Colors
-                updateAlertStatus(data.bpm);
 
-            } catch (error) {
-                console.error("Error fetching data:", error);
+                // 3. Calculated Session Average
+                document.getElementById('avgBpmDisplay').innerText = data.avg_bpm > 0 ? `${data.avg_bpm} BPM` : "-- BPM";
+
+                // 4. Condition Logic
+                const alertBox = document.getElementById('statusAlert');
+                if (bpm >= 60 && bpm <= 90) {
+                    alertBox.innerText = "GOOD";
+                    alertBox.className = "text-4xl font-bold mt-4 text-green-400";
+                } else if (bpm > 0 && (bpm < 60 || bpm > 90)) {
+                    alertBox.innerText = "MODERATE";
+                    alertBox.className = "text-4xl font-bold mt-4 text-yellow-400";
+                } else {
+                    alertBox.innerText = "--";
+                    alertBox.className = "text-4xl font-bold mt-4 text-gray-400";
+                }
+            } catch (err) {
+                console.error("Update failed", err);
             }
         }
-
-        function updateAlertStatus(bpm) {
-            const badge = document.getElementById('statusBadge');
-            const bpmDisplay = document.getElementById('bpmValue');
-            const diagnosisText = document.getElementById('diagnosisText');
-
-            if (bpm === 0) {
-                badge.className = 'status-badge';
-                badge.style.backgroundColor = '#64748b';
-                badge.innerText = 'Calibrating...';
-                return;
-            }
-
-            if (bpm >= 60 && bpm <= 90) {
-                badge.className = 'status-badge status-good';
-                badge.innerText = 'Good';
-                bpmDisplay.style.color = '#22c55e'; 
-                diagnosisText.style.color = '#38bdf8'; // Highlight AI text in blue when active
-            } 
-            else if ((bpm > 90 && bpm < 105) || (bpm > 45 && bpm < 60)) {
-                badge.className = 'status-badge status-bad';
-                badge.innerText = 'Elevated';
-                bpmDisplay.style.color = '#f59e0b'; 
-                diagnosisText.style.color = '#38bdf8'; 
-            } 
-            else {
-                badge.className = 'status-badge status-critical';
-                badge.innerText = 'Critical';
-                bpmDisplay.style.color = '#ef4444'; 
-                diagnosisText.style.color = '#38bdf8'; 
-            }
-        }
-
-        // Ping the server exactly twice a second (500ms)
-        setInterval(fetchBPM, 500);
+        setInterval(updateDashboard, 500);
     </script>
 </body>
 </html>
